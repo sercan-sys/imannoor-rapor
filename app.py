@@ -77,7 +77,8 @@ def guncelle_dongu():
             v = veri_cek()
             AYLAR = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran",
                      "Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"]
-            d = datetime.now()
+            from zoneinfo import ZoneInfo
+            d = datetime.now(ZoneInfo("Europe/Istanbul"))
             son_veri = {**v,
                 "guncelleme": f"{d.day} {AYLAR[d.month-1]} {d.year}  {d.strftime('%H:%M')}",
                 "hata": None}
@@ -98,82 +99,80 @@ HTML = r"""<!DOCTYPE html>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-height:100vh}
-.page{max-width:640px;margin:0 auto;padding:0 0 40px}
+.page{max-width:480px;margin:0 auto;padding:0 0 20px}
 
-/* TOP BAR — koyu */
-.topbar{background:#111118;padding:22px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
-.topbar-title{font-size:26px;font-weight:900;color:#fff;letter-spacing:-.5px}
+/* TOP BAR */
+.topbar{background:#111118;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.topbar-title{font-size:20px;font-weight:900;color:#fff;letter-spacing:-.5px}
 .topbar-right{text-align:right}
-.topbar-tarih{font-size:13px;color:#555577;line-height:1.6}
-.topbar-saat{font-size:12px;color:#333344}
+.topbar-tarih{font-size:11px;color:#555577;line-height:1.5}
+.topbar-saat{font-size:11px;color:#333344}
 
 /* HEDEF KARTLARI */
-.hkartlar{background:#111118;padding:0 32px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.hk{background:#1e1e2e;border:1px solid #2a2a44;border-radius:14px;padding:16px 20px}
-.hk-lbl{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#444466;margin-bottom:8px}
-.hk-val{font-family:'DM Mono',monospace;font-size:22px;font-weight:600;letter-spacing:-.5px;color:#c9a84c}
-.hk-sub{font-size:11px;color:#333344;margin-top:5px;font-family:'DM Mono',monospace}
-.oran-val{font-family:'DM Mono',monospace;font-size:36px;font-weight:700;letter-spacing:-1px}
-.mini-bar{width:100%;height:4px;background:#1a1a30;border-radius:99px;margin-top:10px;overflow:hidden}
+.hkartlar{background:#111118;padding:0 18px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hk{background:#1e1e2e;border:1px solid #2a2a44;border-radius:12px;padding:12px 14px}
+.hk-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#444466;margin-bottom:6px}
+.hk-val{font-family:'DM Mono',monospace;font-size:18px;font-weight:600;letter-spacing:-.5px;color:#c9a84c}
+.hk-sub{font-size:10px;color:#333344;margin-top:4px;font-family:'DM Mono',monospace}
+.oran-val{font-family:'DM Mono',monospace;font-size:30px;font-weight:700;letter-spacing:-1px}
+.mini-bar{width:100%;height:4px;background:#1a1a30;border-radius:99px;margin-top:8px;overflow:hidden}
 .mini-barf{height:100%;border-radius:99px;transition:width .8s}
 
 /* BODY */
-.body{background:#f0ede6;padding:24px 32px}
+.body{background:#f0ede6;padding:14px 18px}
 
-/* BUGÜN — altın kart */
-.bugun-kart{background:linear-gradient(135deg,#c9a84c,#a07830);border-radius:18px;padding:22px 26px;margin-bottom:16px;position:relative;overflow:hidden}
-.bugun-kart::after{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;background:rgba(255,255,255,.08);border-radius:50%}
-.bugun-lbl{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(0,0,0,.45);margin-bottom:8px}
-.bugun-val{font-family:'DM Mono',monospace;font-size:48px;font-weight:700;color:#1a1a1a;letter-spacing:-1.5px;line-height:1}
-.bugun-adet{font-size:13px;color:rgba(0,0,0,.4);margin-top:8px;font-family:'DM Mono',monospace}
+/* BUGÜN */
+.bugun-kart{background:linear-gradient(135deg,#c9a84c,#a07830);border-radius:14px;padding:16px 18px;margin-bottom:10px;position:relative;overflow:hidden}
+.bugun-kart::after{content:'';position:absolute;right:-20px;top:-20px;width:100px;height:100px;background:rgba(255,255,255,.08);border-radius:50%}
+.bugun-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(0,0,0,.45);margin-bottom:6px}
+.bugun-val{font-family:'DM Mono',monospace;font-size:36px;font-weight:700;color:#1a1a1a;letter-spacing:-1px;line-height:1}
+.bugun-adet{font-size:11px;color:rgba(0,0,0,.4);margin-top:6px;font-family:'DM Mono',monospace}
 
-/* DÜN KART */
-.dun-kart{background:#fff;border-radius:16px;padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-.dun-sol .dun-lbl{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbb;margin-bottom:5px}
-.dun-sol .dun-val{font-family:'DM Mono',monospace;font-size:26px;font-weight:600;color:#333}
-.fark{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;padding:7px 14px;border-radius:99px}
+/* DÜN */
+.dun-kart{background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.dun-sol .dun-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbb;margin-bottom:4px}
+.dun-sol .dun-val{font-family:'DM Mono',monospace;font-size:20px;font-weight:600;color:#333}
+.fark{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;padding:5px 10px;border-radius:99px}
 .fp{background:#e8faf0;color:#16a34a}
 .fn{background:#fef2f2;color:#dc2626}
 
 /* KATEGORİ */
-.sec-lbl{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#bbb;margin-bottom:12px}
-.kat-grid{display:grid;gap:12px;margin-bottom:0}
-.kat{background:#fff;border-radius:14px;padding:18px 22px;box-shadow:0 2px 12px rgba(0,0,0,.05)}
-.kat-ust{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
-.kat-isim{font-size:12px;font-weight:700;color:#999;letter-spacing:1px;text-transform:uppercase}
-.kat-oran{font-family:'DM Mono',monospace;font-size:13px;font-weight:700}
-.kat-ciro{font-family:'DM Mono',monospace;font-size:28px;font-weight:700;letter-spacing:-.5px;margin-bottom:3px}
-.kat-hedef{font-size:11px;color:#ccc;margin-bottom:10px;font-family:'DM Mono',monospace}
-.bar{width:100%;height:8px;background:#f0ece4;border-radius:99px;overflow:hidden}
+.sec-lbl{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#bbb;margin-bottom:8px}
+.kat-grid{display:grid;gap:8px}
+.kat{background:#fff;border-radius:12px;padding:12px 16px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.kat-ust{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+.kat-isim{font-size:10px;font-weight:700;color:#999;letter-spacing:1px;text-transform:uppercase}
+.kat-oran{font-family:'DM Mono',monospace;font-size:12px;font-weight:700}
+.kat-ciro{font-family:'DM Mono',monospace;font-size:22px;font-weight:700;letter-spacing:-.5px;margin-bottom:2px}
+.kat-hedef{font-size:10px;color:#ccc;margin-bottom:8px;font-family:'DM Mono',monospace}
+.bar{width:100%;height:6px;background:#f0ece4;border-radius:99px;overflow:hidden}
 .barf{height:100%;border-radius:99px;transition:width .8s}
 
 /* FOOTER */
-.foot{background:#111118;padding:14px 32px;display:flex;justify-content:space-between;align-items:center}
-.foot-left{font-size:11px;color:#333344}
-.foot-brand{font-size:13px;font-weight:700;letter-spacing:2px;color:#c9a84c}
-
-/* AYAR BUTONU */
-.ayar-btn{background:transparent;border:1px solid #333344;border-radius:99px;padding:6px 14px;font-size:12px;color:#555566;cursor:pointer;transition:.2s}
+.foot{background:#111118;padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
+.foot-left{font-size:10px;color:#333344}
+.foot-brand{font-size:12px;font-weight:700;letter-spacing:2px;color:#c9a84c}
+.ayar-btn{background:transparent;border:1px solid #333344;border-radius:99px;padding:5px 12px;font-size:11px;color:#555566;cursor:pointer;transition:.2s}
 .ayar-btn:hover{border-color:#c9a84c;color:#c9a84c}
-.live-row{display:flex;align-items:center;gap:10px}
-.dot{width:7px;height:7px;background:#22c55e;border-radius:50%;animation:pu 2s infinite;flex-shrink:0}
+.live-row{display:flex;align-items:center;gap:8px}
+.dot{width:6px;height:6px;background:#22c55e;border-radius:50%;animation:pu 2s infinite;flex-shrink:0}
 @keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
-.son-gun{font-size:11px;color:#333344}
+.son-gun{font-size:10px;color:#333344}
 
 /* MODAL */
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;justify-content:center;align-items:center}
 .overlay.open{display:flex}
-.modal{background:#fff;border-radius:20px;padding:28px;width:320px;max-width:94vw}
-.modal h2{font-size:18px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
-.modal p{font-size:12px;color:#aaa;margin-bottom:18px}
-.modal label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#bbb;display:block;margin-bottom:4px;margin-top:10px}
-.modal input{width:100%;border:1.5px solid #e8e4dc;border-radius:10px;padding:10px 14px;font-size:14px;font-family:'DM Mono',monospace;color:#1a1a1a;outline:none}
+.modal{background:#fff;border-radius:20px;padding:24px;width:300px;max-width:90vw}
+.modal h2{font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
+.modal p{font-size:11px;color:#aaa;margin-bottom:16px}
+.modal label{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#bbb;display:block;margin-bottom:4px;margin-top:10px}
+.modal input{width:100%;border:1.5px solid #e8e4dc;border-radius:10px;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace;color:#1a1a1a;outline:none}
 .modal input:focus{border-color:#c9a84c}
-.btn-row{display:flex;gap:10px;margin-top:18px}
-.btn{flex:1;padding:10px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;border:none}
+.btn-row{display:flex;gap:8px;margin-top:16px}
+.btn{flex:1;padding:9px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none}
 .btn-iptal{background:#f0ece4;color:#888}
 .btn-kaydet{background:#c9a84c;color:#fff}
-.err{color:#dc2626;font-size:12px;margin-top:5px;display:none}
+.err{color:#dc2626;font-size:11px;margin-top:4px;display:none}
 
 @media(max-width:480px){
   .topbar,.hkartlar,.body,.foot{padding-left:18px;padding-right:18px}
