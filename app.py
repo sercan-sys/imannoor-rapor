@@ -25,6 +25,7 @@ hedefler = {
 son_veri = {
     "bugun_ciro": 0, "dun_ciro": 0, "toplam_adet": 0,
     "eticaret_ciro": 0, "magaza_ciro": 0, "toptan_ciro": 0,
+    "aylik_ciro": 0,
     "guncelleme": "Henüz güncellenmedi", "hata": None,
 }
 
@@ -66,6 +67,7 @@ def veri_cek():
         "eticaret_ciro": p("Eticaret Ciro"),
         "magaza_ciro": p("Mağaza Ciro"),
         "toptan_ciro": p("Toptan Ciro"),
+        "aylik_ciro": p("Bu Ay Ciro") or p("Aylık Ciro") or p("Bu Ay") or p("Aylık"),
     }
 
 
@@ -114,6 +116,7 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 .hk-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#444466;margin-bottom:6px}
 .hk-val{font-family:'DM Mono',monospace;font-size:18px;font-weight:600;letter-spacing:-.5px;color:#c9a84c}
 .hk-sub{font-size:10px;color:#333344;margin-top:4px;font-family:'DM Mono',monospace}
+.hk-oran{font-family:'DM Mono',monospace;font-size:16px;font-weight:700;margin-top:2px}
 .oran-val{font-family:'DM Mono',monospace;font-size:30px;font-weight:700;letter-spacing:-1px}
 .mini-bar{width:100%;height:4px;background:#1a1a30;border-radius:99px;margin-top:8px;overflow:hidden}
 .mini-barf{height:100%;border-radius:99px;transition:width .8s}
@@ -198,13 +201,16 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
   <div class="hkartlar">
     <div class="hk">
       <div class="hk-lbl">Toplam Hedef</div>
-      <div class="hk-val" id="toplam-hedef">—</div>
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <div class="hk-val" id="toplam-hedef">—</div>
+        <div class="hk-oran" id="toplam-oran">—</div>
+      </div>
       <div class="hk-sub" id="adet-sub">— adet sipariş</div>
     </div>
     <div class="hk">
-      <div class="hk-lbl">Gerçekleştirme</div>
-      <div class="oran-val" id="oran">—</div>
-      <div class="mini-bar"><div class="mini-barf" id="obar" style="width:0%"></div></div>
+      <div class="hk-lbl">Aylık Ciro</div>
+      <div class="hk-val" id="aylik-ciro">—</div>
+      <div class="hk-sub">Bu ay toplam</div>
     </div>
   </div>
 
@@ -301,10 +307,13 @@ function guncelle(){
 
     const o=H.top>0?Math.round(d.bugun_ciro/H.top*100):0;
     const r=renk(o);
-    document.getElementById('oran').textContent='%'+o;
-    document.getElementById('oran').style.color=r;
-    const ob=document.getElementById('obar');
-    ob.style.width=Math.min(o,100)+'%';ob.style.background=r;
+    const oranEl=document.getElementById('toplam-oran');
+    oranEl.textContent='%'+o;
+    oranEl.style.color=r;
+
+    // Aylık ciro
+    document.getElementById('aylik-ciro').textContent=
+      d.aylik_ciro>0 ? fmt(d.aylik_ciro)+' TL' : '—';
 
     document.getElementById('bugun-ciro').textContent=fmt(d.bugun_ciro)+' TL';
     document.getElementById('bugun-adet').textContent=fmt(d.toplam_adet)+' adet sipariş';
@@ -375,6 +384,10 @@ setInterval(guncelle,60000);
 
 
 @app.route("/")
+def ana():
+    return '<meta http-equiv="refresh" content="0;url=/rapor">'
+
+@app.route("/rapor")
 def index():
     return render_template_string(HTML)
 
