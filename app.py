@@ -1,8 +1,5 @@
 """
-IMANNOOR Canlı Ciro Dashboard v3
-- Açık zemin, PNG görseli ile aynı tasarım
-- Admin paneli ile günlük hedef değiştirme
-- requests + BeautifulSoup (hafif, Railway ücretsiz plan)
+IMANNOOR Canlı Ciro Dashboard v4
 """
 
 import os, time, threading, requests
@@ -20,6 +17,7 @@ hedefler = {
     "eticaret": int(os.environ.get("HEDEF_ETICARET", "3250000")),
     "magaza"  : int(os.environ.get("HEDEF_MAGAZA",   "750000")),
     "toptan"  : int(os.environ.get("HEDEF_TOPTAN",   "500000")),
+    "aylik"   : int(os.environ.get("HEDEF_AYLIK",    "100000000")),
 }
 
 son_veri = {
@@ -61,13 +59,20 @@ def veri_cek():
                     if v: return parse_sayi(v)
         return 0.0
 
+    aylik = p("Bu Ay Ciro") or p("Aylık Ciro") or p("Bu Ay") or p("Aylık")
+
+    lines = txt.split("\n")
+    for i, l in enumerate(lines):
+        if any(x in l.lower() for x in ["ay", "ciro", "aylık"]):
+            print(f"  [DEBUG] satır {i}: '{l.strip()}'")
+
     return {
         "bugun_ciro": p("Bugün Ciro"), "dun_ciro": p("Dün Ciro"),
         "toplam_adet": int(p("Adet")),
         "eticaret_ciro": p("Eticaret Ciro"),
         "magaza_ciro": p("Mağaza Ciro"),
         "toptan_ciro": p("Toptan Ciro"),
-        "aylik_ciro": p("Bu Ay Ciro") or p("Aylık Ciro") or p("Bu Ay") or p("Aylık"),
+        "aylik_ciro": aylik,
     }
 
 
@@ -84,7 +89,7 @@ def guncelle_dongu():
             son_veri = {**v,
                 "guncelleme": f"{d.day} {AYLAR[d.month-1]} {d.year}  {d.strftime('%H:%M')}",
                 "hata": None}
-            print(f"  ✅ {v['bugun_ciro']:,.0f} TL | {v['toplam_adet']} adet")
+            print(f"  ✅ {v['bugun_ciro']:,.0f} TL | {v['toplam_adet']} adet | Aylık: {v['aylik_ciro']:,.0f}")
         except Exception as e:
             son_veri["hata"] = str(e)
             print(f"  ❌ {e}")
@@ -104,69 +109,78 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 .page{max-width:480px;margin:0 auto;padding:0 0 20px}
 
 /* TOP BAR */
-.topbar{background:#111118;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
-.topbar-title{font-size:20px;font-weight:900;color:#fff;letter-spacing:-.5px}
+.topbar{background:#111118;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}
+.topbar-title{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.5px}
 .topbar-right{text-align:right}
 .topbar-tarih{font-size:11px;color:#555577;line-height:1.5}
 .topbar-saat{font-size:11px;color:#333344}
 
-/* HEDEF KARTLARI */
-.hkartlar{background:#111118;padding:0 18px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.hk{background:#1e1e2e;border:1px solid #2a2a44;border-radius:12px;padding:12px 14px}
-.hk-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#444466;margin-bottom:6px}
-.hk-val{font-family:'DM Mono',monospace;font-size:18px;font-weight:600;letter-spacing:-.5px;color:#c9a84c}
-.hk-sub{font-size:10px;color:#333344;margin-top:4px;font-family:'DM Mono',monospace}
-.hk-oran{font-family:'DM Mono',monospace;font-size:16px;font-weight:700;margin-top:2px}
-.oran-val{font-family:'DM Mono',monospace;font-size:30px;font-weight:700;letter-spacing:-1px}
-.mini-bar{width:100%;height:4px;background:#1a1a30;border-radius:99px;margin-top:8px;overflow:hidden}
-.mini-barf{height:100%;border-radius:99px;transition:width .8s}
+/* BLOK */
+.blok{margin:12px 14px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.blok-header{padding:14px 16px 10px;border-bottom:1px solid #f0ece4}
+.blok-baslik{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbb}
 
-/* BODY */
-.body{background:#f0ede6;padding:14px 18px}
+/* AYLIK BLOK */
+.aylik-blok{margin:12px 14px;background:#111118;border-radius:16px;overflow:hidden}
+.aylik-header{padding:14px 16px 10px}
+.aylik-baslik{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#444466}
+.aylik-row{padding:0 16px 16px;display:flex;align-items:baseline;gap:10px}
+.aylik-val{font-family:'DM Mono',monospace;font-size:28px;font-weight:700;color:#c9a84c;letter-spacing:-1px}
+.aylik-oran{font-family:'DM Mono',monospace;font-size:15px;font-weight:700}
+.aylik-hedef-txt{font-size:10px;color:#333344;padding:0 16px 6px;font-family:'DM Mono',monospace}
 
-/* BUGÜN */
-.bugun-kart{background:linear-gradient(135deg,#c9a84c,#a07830);border-radius:14px;padding:16px 18px;margin-bottom:10px;position:relative;overflow:hidden}
-.bugun-kart::after{content:'';position:absolute;right:-20px;top:-20px;width:100px;height:100px;background:rgba(255,255,255,.08);border-radius:50%}
-.bugun-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(0,0,0,.45);margin-bottom:6px}
-.bugun-val{font-family:'DM Mono',monospace;font-size:36px;font-weight:700;color:#1a1a1a;letter-spacing:-1px;line-height:1}
-.bugun-adet{font-size:11px;color:rgba(0,0,0,.4);margin-top:6px;font-family:'DM Mono',monospace}
+/* TÜP (dolum çubuğu) */
+.tup-wrap{padding:0 16px 16px}
+.tup-track{width:100%;height:10px;background:#1e1e2e;border-radius:99px;overflow:hidden}
+.tup-fill{height:100%;border-radius:99px;transition:width 1s ease}
+.tup-labels{display:flex;justify-content:space-between;margin-top:5px}
+.tup-label{font-size:10px;color:#333344;font-family:'DM Mono',monospace}
 
-/* DÜN */
-.dun-kart{background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.06)}
-.dun-sol .dun-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbb;margin-bottom:4px}
-.dun-sol .dun-val{font-family:'DM Mono',monospace;font-size:20px;font-weight:600;color:#333}
-.fark{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;padding:5px 10px;border-radius:99px}
+/* BUGÜN CİRO */
+.bugun-row{padding:14px 16px 10px;display:flex;align-items:baseline;gap:10px}
+.bugun-val{font-family:'DM Mono',monospace;font-size:34px;font-weight:700;color:#1a1a1a;letter-spacing:-1px}
+.bugun-adet{font-size:11px;color:#bbb;padding:0 16px 4px;font-family:'DM Mono',monospace}
+.dun-row{padding:8px 16px 14px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f5f2ec}
+.dun-lbl{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#ccc}
+.dun-val{font-family:'DM Mono',monospace;font-size:14px;color:#888}
+.fark{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px}
 .fp{background:#e8faf0;color:#16a34a}
 .fn{background:#fef2f2;color:#dc2626}
 
-/* KATEGORİ */
-.sec-lbl{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#bbb;margin-bottom:8px}
-.kat-grid{display:grid;gap:8px}
-.kat{background:#fff;border-radius:12px;padding:12px 16px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
-.kat-ust{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
-.kat-isim{font-size:10px;font-weight:700;color:#999;letter-spacing:1px;text-transform:uppercase}
+/* KATEGORİ TÜPLERİ */
+.kat-list{padding:4px 16px 16px}
+.kat-item{margin-bottom:12px}
+.kat-item:last-child{margin-bottom:0}
+.kat-ust{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.kat-isim{font-size:11px;font-weight:700;color:#888;letter-spacing:.5px;text-transform:uppercase}
+.kat-sag{display:flex;align-items:baseline;gap:8px}
+.kat-ciro{font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:#1a1a1a}
 .kat-oran{font-family:'DM Mono',monospace;font-size:12px;font-weight:700}
-.kat-ciro{font-family:'DM Mono',monospace;font-size:22px;font-weight:700;letter-spacing:-.5px;margin-bottom:2px}
-.kat-hedef{font-size:10px;color:#ccc;margin-bottom:8px;font-family:'DM Mono',monospace}
-.bar{width:100%;height:6px;background:#f0ece4;border-radius:99px;overflow:hidden}
-.barf{height:100%;border-radius:99px;transition:width .8s}
+.kat-track{width:100%;height:8px;background:#f0ece4;border-radius:99px;overflow:hidden}
+.kat-fill{height:100%;border-radius:99px;transition:width 1s ease}
+.kat-hedef-txt{font-size:10px;color:#ccc;margin-top:3px;font-family:'DM Mono',monospace}
+
+/* GÜNLÜK HEDEF BANNER */
+.gunluk-hedef{margin:0 16px 16px;background:#f7f4ee;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.gh-lbl{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#ccc}
+.gh-val{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:#888}
 
 /* FOOTER */
-.foot{background:#111118;padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
-.foot-left{font-size:10px;color:#333344}
-.foot-brand{font-size:12px;font-weight:700;letter-spacing:2px;color:#c9a84c}
-.ayar-btn{background:transparent;border:1px solid #333344;border-radius:99px;padding:5px 12px;font-size:11px;color:#555566;cursor:pointer;transition:.2s}
-.ayar-btn:hover{border-color:#c9a84c;color:#c9a84c}
-.live-row{display:flex;align-items:center;gap:8px}
-.dot{width:6px;height:6px;background:#22c55e;border-radius:50%;animation:pu 2s infinite;flex-shrink:0}
+.foot{background:#111118;margin:0 0 0;padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
+.live-row{display:flex;align-items:center;gap:7px}
+.dot{width:6px;height:6px;background:#22c55e;border-radius:50%;animation:pu 2s infinite}
 @keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
 .son-gun{font-size:10px;color:#333344}
+.foot-right{display:flex;align-items:center;gap:10px}
+.ayar-btn{background:transparent;border:1px solid #2a2a3a;border-radius:99px;padding:5px 12px;font-size:11px;color:#444455;cursor:pointer;transition:.2s}
+.ayar-btn:hover{border-color:#c9a84c;color:#c9a84c}
+.foot-brand{font-size:12px;font-weight:700;letter-spacing:2px;color:#c9a84c}
 
 /* MODAL */
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;justify-content:center;align-items:center}
 .overlay.open{display:flex}
 .modal{background:#fff;border-radius:20px;padding:24px;width:300px;max-width:90vw}
-.modal h2{font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
+.modal h2{font-size:16px;font-weight:700;margin-bottom:4px}
 .modal p{font-size:11px;color:#aaa;margin-bottom:16px}
 .modal label{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#bbb;display:block;margin-bottom:4px;margin-top:10px}
 .modal input{width:100%;border:1.5px solid #e8e4dc;border-radius:10px;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace;color:#1a1a1a;outline:none}
@@ -176,13 +190,7 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 .btn-iptal{background:#f0ece4;color:#888}
 .btn-kaydet{background:#c9a84c;color:#fff}
 .err{color:#dc2626;font-size:11px;margin-top:4px;display:none}
-
-@media(max-width:480px){
-  .topbar,.hkartlar,.body,.foot{padding-left:18px;padding-right:18px}
-  .hkartlar{grid-template-columns:1fr}
-  .bugun-val{font-size:36px}
-  .oran-val{font-size:28px}
-}
+.modal-divider{height:1px;background:#f0ece4;margin:14px 0 4px}
 </style>
 </head>
 <body>
@@ -197,57 +205,63 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
     </div>
   </div>
 
-  <!-- HEDEF KARTLARI -->
-  <div class="hkartlar">
-    <div class="hk">
-      <div class="hk-lbl">Toplam Hedef</div>
-      <div style="display:flex;align-items:baseline;gap:10px">
-        <div class="hk-val" id="toplam-hedef">—</div>
-        <div class="hk-oran" id="toplam-oran">—</div>
-      </div>
-      <div class="hk-sub" id="adet-sub">— adet sipariş</div>
+  <!-- AYLIK BLOK -->
+  <div class="aylik-blok">
+    <div class="aylik-header">
+      <div class="aylik-baslik">Aylık Ciro</div>
     </div>
-    <div class="hk">
-      <div class="hk-lbl">Aylık Ciro</div>
-      <div class="hk-val" id="aylik-ciro">—</div>
-      <div class="hk-sub">Bu ay toplam</div>
+    <div class="aylik-row">
+      <div class="aylik-val" id="aylik-ciro">—</div>
+      <div class="aylik-oran" id="aylik-oran">—</div>
+    </div>
+    <div class="aylik-hedef-txt" id="aylik-hedef-txt">Hedef: —</div>
+    <div class="tup-wrap">
+      <div class="tup-track">
+        <div class="tup-fill" id="aylik-bar" style="width:0%;background:#c9a84c"></div>
+      </div>
+      <div class="tup-labels">
+        <span class="tup-label">0</span>
+        <span class="tup-label" id="aylik-hedef-lbl">—</span>
+      </div>
     </div>
   </div>
 
-  <!-- BODY -->
-  <div class="body">
+  <!-- BUGÜN BLOK -->
+  <div class="blok">
+    <div class="blok-header">
+      <div class="blok-baslik">Bugün Gerçekleşen Ciro</div>
+    </div>
+    <div class="bugun-row">
+      <div class="bugun-val" id="bugun-ciro">—</div>
+    </div>
+    <div class="bugun-adet" id="bugun-adet">—</div>
 
-    <!-- BUGÜN -->
-    <div class="bugun-kart">
-      <div class="bugun-lbl">BUGÜN CİRO</div>
-      <div class="bugun-val" id="bugun-ciro">0 TL</div>
-      <div class="bugun-adet" id="bugun-adet">0 adet sipariş</div>
+    <!-- KATEGORİ TÜPLERİ -->
+    <div class="kat-list" id="katlar"></div>
+
+    <!-- GÜNLÜK TOPLAM HEDEF -->
+    <div class="gunluk-hedef">
+      <div class="gh-lbl">Günlük Toplam Hedef</div>
+      <div class="gh-val" id="gunluk-hedef">—</div>
     </div>
 
     <!-- DÜN -->
-    <div class="dun-kart">
-      <div class="dun-sol">
-        <div class="dun-lbl">DÜN CİRO</div>
+    <div class="dun-row">
+      <div>
+        <div class="dun-lbl">Dün Ciro</div>
         <div class="dun-val" id="dun-ciro">—</div>
       </div>
       <div class="fark" id="fark">—</div>
     </div>
-
-    <!-- KATEGORİLER -->
-    <div class="sec-lbl" style="margin-top:20px">KATEGORİ BAZINDA CİRO & HEDEF</div>
-    <div class="kat-grid" id="katlar"></div>
-
   </div>
 
   <!-- FOOTER -->
   <div class="foot">
-    <div>
-      <div class="live-row">
-        <div class="dot"></div>
-        <span class="son-gun" id="son-gun">Bağlanıyor...</span>
-      </div>
+    <div class="live-row">
+      <div class="dot"></div>
+      <span class="son-gun" id="son-gun">Bağlanıyor...</span>
     </div>
-    <div style="display:flex;align-items:center;gap:12px">
+    <div class="foot-right">
       <button class="ayar-btn" onclick="modalAc()">⚙️ Hedefler</button>
       <div class="foot-brand">IMANNOOR</div>
     </div>
@@ -258,8 +272,8 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 <!-- MODAL -->
 <div class="overlay" id="overlay">
   <div class="modal">
-    <h2>⚙️ Günlük Hedefler</h2>
-    <p>Admin şifresiyle hedefleri güncelleyebilirsin.</p>
+    <h2>⚙️ Hedefler</h2>
+    <p>Admin şifresiyle hedefleri güncelle.</p>
     <div id="sifre-alan">
       <label>Admin Şifresi</label>
       <input type="password" id="sifre-inp" placeholder="••••••">
@@ -270,12 +284,18 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
       </div>
     </div>
     <div id="hedef-alan" style="display:none">
-      <label>E-Ticaret Hedef (TL)</label>
+      <div class="modal-divider"></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:8px">Günlük Hedefler</div>
+      <label>E-Ticaret (TL)</label>
       <input type="number" id="h-et">
-      <label>Mağaza Hedef (TL)</label>
+      <label>Mağaza (TL)</label>
       <input type="number" id="h-mg">
-      <label>Toptan Hedef (TL)</label>
+      <label>Toptan (TL)</label>
       <input type="number" id="h-tp">
+      <div class="modal-divider"></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:8px">Aylık Hedef</div>
+      <label>Aylık Toplam (TL)</label>
+      <input type="number" id="h-aylik">
       <div class="btn-row">
         <button class="btn btn-iptal" onclick="modalKapat()">İptal</button>
         <button class="btn btn-kaydet" onclick="hedefKaydet()">💾 Kaydet</button>
@@ -285,15 +305,18 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 </div>
 
 <script>
-let H={et:0,mg:0,tp:0,top:0};
+let H={et:0,mg:0,tp:0,top:0,aylik:0};
 const AYLAR=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 const GUNLER=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
 function fmt(n){return Math.round(n).toLocaleString('tr-TR')}
 function renk(o){return o>=100?'#16a34a':o>=75?'#ca8a04':'#dc2626'}
+function renk2(o){return o>=100?'#22c55e':o>=75?'#facc15':'#ef4444'}
 
 function guncelle(){
   fetch('/api/veri').then(r=>r.json()).then(d=>{
     H=d.hedefler;
+
+    // Tarih/saat TR
     const now=new Date();
     const tr=new Date(now.toLocaleString('en-US',{timeZone:'Europe/Istanbul'}));
     document.getElementById('tarih').textContent=
@@ -302,44 +325,57 @@ function guncelle(){
       String(tr.getHours()).padStart(2,'0')+':'+String(tr.getMinutes()).padStart(2,'0');
     document.getElementById('son-gun').textContent='Son: '+d.guncelleme;
 
-    document.getElementById('toplam-hedef').textContent=fmt(H.top)+' TL';
-    document.getElementById('adet-sub').textContent=fmt(d.toplam_adet)+' adet sipariş';
+    // AYLIK
+    const ayOran = H.aylik>0 ? Math.round(d.aylik_ciro/H.aylik*100) : 0;
+    const ayRenk = renk2(ayOran);
+    document.getElementById('aylik-ciro').textContent = d.aylik_ciro>0 ? fmt(d.aylik_ciro)+' TL' : '—';
+    document.getElementById('aylik-oran').textContent = d.aylik_ciro>0 ? '%'+ayOran : '';
+    document.getElementById('aylik-oran').style.color = ayRenk;
+    document.getElementById('aylik-hedef-txt').textContent = 'Hedef: '+fmt(H.aylik)+' TL';
+    document.getElementById('aylik-hedef-lbl').textContent = fmt(H.aylik);
+    const ab = document.getElementById('aylik-bar');
+    ab.style.width = Math.min(ayOran,100)+'%';
+    ab.style.background = ayRenk;
 
-    const o=H.top>0?Math.round(d.bugun_ciro/H.top*100):0;
-    const r=renk(o);
-    const oranEl=document.getElementById('toplam-oran');
-    oranEl.textContent='%'+o;
-    oranEl.style.color=r;
+    // BUGÜN
+    document.getElementById('bugun-ciro').textContent = fmt(d.bugun_ciro)+' TL';
+    document.getElementById('bugun-adet').textContent = fmt(d.toplam_adet)+' adet sipariş';
 
-    // Aylık ciro
-    document.getElementById('aylik-ciro').textContent=
-      d.aylik_ciro>0 ? fmt(d.aylik_ciro)+' TL' : '—';
+    // Günlük toplam hedef
+    document.getElementById('gunluk-hedef').textContent = fmt(H.top)+' TL';
 
-    document.getElementById('bugun-ciro').textContent=fmt(d.bugun_ciro)+' TL';
-    document.getElementById('bugun-adet').textContent=fmt(d.toplam_adet)+' adet sipariş';
-
-    document.getElementById('dun-ciro').textContent=fmt(d.dun_ciro)+' TL';
+    // DÜN
+    document.getElementById('dun-ciro').textContent = fmt(d.dun_ciro)+' TL';
     const f=d.bugun_ciro-d.dun_ciro;
     const fe=document.getElementById('fark');
     fe.textContent=(f>=0?'▲ ':'▼ ')+fmt(Math.abs(f))+' TL';
     fe.className='fark '+(f>=0?'fp':'fn');
 
+    // KATEGORİ TÜPLERİ
     const katlar=[
-      {n:'E-Ticaret',c:d.eticaret_ciro,h:H.et,r:'#3b5bdb'},
-      {n:'Mağaza',   c:d.magaza_ciro,  h:H.mg,r:'#2b8a3e'},
-      {n:'Toptan',   c:d.toptan_ciro,  h:H.tp,r:'#b45309'},
+      {n:'E-Ticaret', c:d.eticaret_ciro, h:H.et, r:'#3b5bdb'},
+      {n:'Mağaza',    c:d.magaza_ciro,   h:H.mg, r:'#2b8a3e'},
+      {n:'Toptan',    c:d.toptan_ciro,   h:H.tp, r:'#b45309'},
     ];
-    document.getElementById('katlar').innerHTML=katlar.map(k=>{
-      const o2=k.h>0?Math.round(k.c/k.h*100):0;
-      const r2=renk(o2);
-      const bw=Math.min(o2,100);
-      return `<div class="kat">
-        <div class="kat-ust"><span class="kat-isim">${k.n}</span><span class="kat-oran" style="color:${r2}">%${o2}</span></div>
-        <div class="kat-ciro" style="color:${k.r}">${fmt(k.c)} TL</div>
-        <div class="kat-hedef">Hedef: ${fmt(k.h)} TL</div>
-        <div class="bar"><div class="barf" style="width:${bw}%;background:${k.r}"></div></div>
+    document.getElementById('katlar').innerHTML = katlar.map(k=>{
+      const o=k.h>0?Math.round(k.c/k.h*100):0;
+      const rc=renk(o);
+      const bw=Math.min(o,100);
+      return `<div class="kat-item">
+        <div class="kat-ust">
+          <span class="kat-isim">${k.n}</span>
+          <div class="kat-sag">
+            <span class="kat-ciro" style="color:${k.r}">${fmt(k.c)} TL</span>
+            <span class="kat-oran" style="color:${rc}">%${o}</span>
+          </div>
+        </div>
+        <div class="kat-track">
+          <div class="kat-fill" style="width:${bw}%;background:${k.r}"></div>
+        </div>
+        <div class="kat-hedef-txt">Hedef: ${fmt(k.h)} TL</div>
       </div>`;
     }).join('');
+
   }).catch(()=>{document.getElementById('son-gun').textContent='Bağlantı hatası'});
 }
 
@@ -362,16 +398,20 @@ function sifreKontrol(){
       document.getElementById('h-et').value=H.et;
       document.getElementById('h-mg').value=H.mg;
       document.getElementById('h-tp').value=H.tp;
+      document.getElementById('h-aylik').value=H.aylik;
     } else {document.getElementById('sifre-err').style.display='block';}
   });
 }
 
 function hedefKaydet(){
   fetch('/api/hedef-guncelle',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({sifre:document.getElementById('sifre-inp').value,
+    body:JSON.stringify({
+      sifre:document.getElementById('sifre-inp').value,
       et:parseInt(document.getElementById('h-et').value)||0,
       mg:parseInt(document.getElementById('h-mg').value)||0,
-      tp:parseInt(document.getElementById('h-tp').value)||0})})
+      tp:parseInt(document.getElementById('h-tp').value)||0,
+      aylik:parseInt(document.getElementById('h-aylik').value)||0
+    })})
   .then(r=>r.json()).then(d=>{if(d.ok){modalKapat();guncelle();}});
 }
 
@@ -380,7 +420,6 @@ setInterval(guncelle,60000);
 </script>
 </body>
 </html>"""
-# ═══════════════════════════════════════════════════════════════
 
 
 @app.route("/")
@@ -396,10 +435,11 @@ def api_veri():
     return jsonify({
         **son_veri,
         "hedefler": {
-            "et" : hedefler["eticaret"],
-            "mg" : hedefler["magaza"],
-            "tp" : hedefler["toptan"],
-            "top": hedefler["eticaret"] + hedefler["magaza"] + hedefler["toptan"],
+            "et"   : hedefler["eticaret"],
+            "mg"   : hedefler["magaza"],
+            "tp"   : hedefler["toptan"],
+            "top"  : hedefler["eticaret"] + hedefler["magaza"] + hedefler["toptan"],
+            "aylik": hedefler["aylik"],
         }
     })
 
@@ -414,10 +454,11 @@ def hedef_guncelle():
     data = request.get_json()
     if data.get("sifre") != ADMIN_SIFRE:
         return jsonify({"ok": False})
-    hedefler["eticaret"] = int(data.get("et", hedefler["eticaret"]))
-    hedefler["magaza"]   = int(data.get("mg", hedefler["magaza"]))
-    hedefler["toptan"]   = int(data.get("tp", hedefler["toptan"]))
-    print(f"✅ Hedefler: ET={hedefler['eticaret']:,} MG={hedefler['magaza']:,} TP={hedefler['toptan']:,}")
+    hedefler["eticaret"] = int(data.get("et",    hedefler["eticaret"]))
+    hedefler["magaza"]   = int(data.get("mg",    hedefler["magaza"]))
+    hedefler["toptan"]   = int(data.get("tp",    hedefler["toptan"]))
+    hedefler["aylik"]    = int(data.get("aylik", hedefler["aylik"]))
+    print(f"✅ Hedefler güncellendi")
     return jsonify({"ok": True})
 
 @app.route("/api/saglik")
