@@ -1,8 +1,10 @@
 """
-IMANNOOR Canlı Ciro Dashboard v4
+IMANNOOR Canlı Ciro Dashboard v5
+- SQLite ile günlük kayıt
+- Her 5dk bugünü günceller, 23:58'de kalıcı kaydeder
 """
 
-import os, time, threading, requests
+import os, time, threading, requests, sqlite3
 from datetime import datetime
 from flask import Flask, jsonify, render_template_string, request
 from bs4 import BeautifulSoup
@@ -12,6 +14,7 @@ app = Flask(__name__)
 KULLANICI_ADI = os.environ.get("IMANNOOR_USER", "")
 SIFRE         = os.environ.get("IMANNOOR_PASS", "")
 ADMIN_SIFRE   = os.environ.get("ADMIN_SIFRE", "imn26*")
+DB_PATH       = "/app/data/ciro.db"
 
 hedefler = {
     "eticaret": int(os.environ.get("HEDEF_ETICARET", "3250000")),
@@ -28,12 +31,67 @@ son_veri = {
 }
 
 
+# ── VERİTABANI ─────────────────────────────────────────
+def db_baglanti():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    return sqlite3.connect(DB_PATH)
+
+def db_olustur():
+    with db_baglanti() as con:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS gunluk (
+                tarih       TEXT PRIMARY KEY,
+                eticaret    REAL DEFAULT 0,
+                magaza      REAL DEFAULT 0,
+                toptan      REAL DEFAULT 0,
+                toplam      REAL DEFAULT 0,
+                adet        INTEGER DEFAULT 0,
+                h_eticaret  REAL DEFAULT 0,
+                h_magaza    REAL DEFAULT 0,
+                h_toptan    REAL DEFAULT 0,
+                h_toplam    REAL DEFAULT 0,
+                gece_kayit  INTEGER DEFAULT 0
+            )
+        """)
+        con.commit()
+
+def db_kaydet(tarih, v, gece=False):
+    htop = hedefler["eticaret"] + hedefler["magaza"] + hedefler["toptan"]
+    with db_baglanti() as con:
+        con.execute("""
+            INSERT INTO gunluk (tarih,eticaret,magaza,toptan,toplam,adet,
+                                h_eticaret,h_magaza,h_toptan,h_toplam,gece_kayit)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(tarih) DO UPDATE SET
+                eticaret=excluded.eticaret, magaza=excluded.magaza,
+                toptan=excluded.toptan, toplam=excluded.toplam,
+                adet=excluded.adet, h_eticaret=excluded.h_eticaret,
+                h_magaza=excluded.h_magaza, h_toptan=excluded.h_toptan,
+                h_toplam=excluded.h_toplam,
+                gece_kayit=CASE WHEN excluded.gece_kayit=1 THEN 1 ELSE gunluk.gece_kayit END
+        """, (tarih,
+              v["eticaret_ciro"], v["magaza_ciro"], v["toptan_ciro"], v["bugun_ciro"],
+              v["toplam_adet"],
+              hedefler["eticaret"], hedefler["magaza"], hedefler["toptan"], htop,
+              1 if gece else 0))
+        con.commit()
+
+def db_gecmis(limit=30):
+    with db_baglanti() as con:
+        rows = con.execute("""
+            SELECT tarih,eticaret,magaza,toptan,toplam,adet,
+                   h_eticaret,h_magaza,h_toptan,h_toplam
+            FROM gunluk ORDER BY tarih DESC LIMIT ?
+        """, (limit,)).fetchall()
+    return rows
+
+
+# ── VERİ ÇEKME ─────────────────────────────────────────
 def parse_sayi(m):
     if not m: return 0.0
     t = str(m).strip().replace('\xa0','').replace(' ','').replace('.','').replace(',','.')
     try: return float(t)
     except: return 0.0
-
 
 def veri_cek():
     s = requests.Session()
@@ -59,43 +117,55 @@ def veri_cek():
                     if v: return parse_sayi(v)
         return 0.0
 
-    aylik = p("Bu Ay Ciro") or p("Aylık Ciro") or p("Bu Ay") or p("Aylık")
-
-    lines = txt.split("\n")
-    for i, l in enumerate(lines):
-        if any(x in l.lower() for x in ["ay", "ciro", "aylık"]):
-            print(f"  [DEBUG] satır {i}: '{l.strip()}'")
-
     return {
         "bugun_ciro": p("Bugün Ciro"), "dun_ciro": p("Dün Ciro"),
         "toplam_adet": int(p("Adet")),
         "eticaret_ciro": p("Eticaret Ciro"),
         "magaza_ciro": p("Mağaza Ciro"),
         "toptan_ciro": p("Toptan Ciro"),
-        "aylik_ciro": aylik,
+        "aylik_ciro": p("Bu Ay Ciro") or p("Aylık Ciro") or p("Bu Ay") or p("Aylık"),
     }
 
+def tr_simdi():
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("Europe/Istanbul"))
 
 def guncelle_dongu():
     global son_veri
+    db_olustur()
+    son_gece_kayit = None
+
     while True:
         try:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Veri çekiliyor...")
             v = veri_cek()
             AYLAR = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran",
                      "Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"]
-            from zoneinfo import ZoneInfo
-            d = datetime.now(ZoneInfo("Europe/Istanbul"))
+            d = tr_simdi()
+            tarih_str = f"{d.year}-{d.month:02d}-{d.day:02d}"
+
             son_veri = {**v,
                 "guncelleme": f"{d.day} {AYLAR[d.month-1]} {d.year}  {d.strftime('%H:%M')}",
                 "hata": None}
-            print(f"  ✅ {v['bugun_ciro']:,.0f} TL | {v['toplam_adet']} adet | Aylık: {v['aylik_ciro']:,.0f}")
+
+            # Her 5dk: bugünü güncelle
+            db_kaydet(tarih_str, v, gece=False)
+
+            # Gece 23:58 → kalıcı gece kaydı
+            if d.hour == 23 and d.minute >= 58:
+                if son_gece_kayit != tarih_str:
+                    db_kaydet(tarih_str, v, gece=True)
+                    son_gece_kayit = tarih_str
+                    print(f"  🌙 Gece kaydı yapıldı: {tarih_str}")
+
+            print(f"  ✅ {v['bugun_ciro']:,.0f} TL | {v['toplam_adet']} adet")
         except Exception as e:
             son_veri["hata"] = str(e)
             print(f"  ❌ {e}")
         time.sleep(300)
 
 
+# ── HTML ────────────────────────────────────────────────
 HTML = r"""<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -108,38 +178,49 @@ HTML = r"""<!DOCTYPE html>
 body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-height:100vh}
 .page{max-width:480px;margin:0 auto;padding:0 0 20px}
 
-/* TOP BAR */
 .topbar{background:#111118;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}
 .topbar-title{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.5px}
 .topbar-right{text-align:right}
 .topbar-tarih{font-size:11px;color:#555577;line-height:1.5}
 .topbar-saat{font-size:11px;color:#333344}
 
-/* BLOK */
 .blok{margin:12px 14px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
 .blok-header{padding:14px 16px 10px;border-bottom:1px solid #f0ece4}
 .blok-baslik{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbb}
 
-/* AYLIK BLOK */
 .aylik-blok{margin:12px 14px;background:#111118;border-radius:16px;overflow:hidden}
-.aylik-header{padding:14px 16px 10px}
+.aylik-header{padding:14px 16px 6px}
 .aylik-baslik{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#444466}
-.aylik-row{padding:0 16px 16px;display:flex;align-items:baseline;gap:10px}
+.aylik-row{padding:0 16px 6px;display:flex;align-items:baseline;gap:10px}
 .aylik-val{font-family:'DM Mono',monospace;font-size:28px;font-weight:700;color:#c9a84c;letter-spacing:-1px}
 .aylik-oran{font-family:'DM Mono',monospace;font-size:15px;font-weight:700}
 .aylik-hedef-txt{font-size:10px;color:#333344;padding:0 16px 6px;font-family:'DM Mono',monospace}
-
-/* TÜP (dolum çubuğu) */
-.tup-wrap{padding:0 16px 16px}
+.tup-wrap{padding:0 16px 14px}
 .tup-track{width:100%;height:10px;background:#1e1e2e;border-radius:99px;overflow:hidden}
 .tup-fill{height:100%;border-radius:99px;transition:width 1s ease}
-.tup-labels{display:flex;justify-content:space-between;margin-top:5px}
+.tup-labels{display:flex;justify-content:space-between;margin-top:4px}
 .tup-label{font-size:10px;color:#333344;font-family:'DM Mono',monospace}
 
-/* BUGÜN CİRO */
-.bugun-row{padding:14px 16px 10px;display:flex;align-items:baseline;gap:10px}
+.bugun-row{padding:14px 16px 6px;display:flex;align-items:baseline;gap:10px}
 .bugun-val{font-family:'DM Mono',monospace;font-size:34px;font-weight:700;color:#1a1a1a;letter-spacing:-1px}
-.bugun-adet{font-size:11px;color:#bbb;padding:0 16px 4px;font-family:'DM Mono',monospace}
+.bugun-adet{font-size:11px;color:#bbb;padding:0 16px 6px;font-family:'DM Mono',monospace}
+
+.kat-list{padding:4px 16px 12px}
+.kat-item{margin-bottom:10px}
+.kat-item:last-child{margin-bottom:0}
+.kat-ust{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+.kat-isim{font-size:11px;font-weight:700;color:#888;letter-spacing:.5px;text-transform:uppercase}
+.kat-sag{display:flex;align-items:baseline;gap:8px}
+.kat-ciro{font-family:'DM Mono',monospace;font-size:15px;font-weight:700}
+.kat-oran{font-family:'DM Mono',monospace;font-size:12px;font-weight:700}
+.kat-track{width:100%;height:8px;background:#f0ece4;border-radius:99px;overflow:hidden}
+.kat-fill{height:100%;border-radius:99px;transition:width 1s ease}
+.kat-hedef-txt{font-size:10px;color:#ccc;margin-top:3px;font-family:'DM Mono',monospace}
+
+.gunluk-hedef{margin:0 16px 12px;background:#f7f4ee;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.gh-lbl{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#ccc}
+.gh-val{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:#888}
+
 .dun-row{padding:8px 16px 14px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f5f2ec}
 .dun-lbl{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#ccc}
 .dun-val{font-family:'DM Mono',monospace;font-size:14px;color:#888}
@@ -147,26 +228,24 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 .fp{background:#e8faf0;color:#16a34a}
 .fn{background:#fef2f2;color:#dc2626}
 
-/* KATEGORİ TÜPLERİ */
-.kat-list{padding:4px 16px 16px}
-.kat-item{margin-bottom:12px}
-.kat-item:last-child{margin-bottom:0}
-.kat-ust{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
-.kat-isim{font-size:11px;font-weight:700;color:#888;letter-spacing:.5px;text-transform:uppercase}
-.kat-sag{display:flex;align-items:baseline;gap:8px}
-.kat-ciro{font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:#1a1a1a}
-.kat-oran{font-family:'DM Mono',monospace;font-size:12px;font-weight:700}
-.kat-track{width:100%;height:8px;background:#f0ece4;border-radius:99px;overflow:hidden}
-.kat-fill{height:100%;border-radius:99px;transition:width 1s ease}
-.kat-hedef-txt{font-size:10px;color:#ccc;margin-top:3px;font-family:'DM Mono',monospace}
+/* GEÇMİŞ TABLO */
+.gecmis-blok{margin:12px 14px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.gecmis-header{padding:14px 16px;border-bottom:1px solid #f0ece4;display:flex;justify-content:space-between;align-items:center}
+.gecmis-baslik{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbb}
+.tablo-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead tr{background:#f7f4ee}
+th{padding:8px 10px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#bbb;white-space:nowrap}
+th:first-child{text-align:left}
+td{padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:#555;border-top:1px solid #f5f2ec;white-space:nowrap}
+td:first-child{text-align:left;color:#888;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600}
+tr:hover td{background:#faf8f4}
+.oran-badge{display:inline-block;padding:2px 6px;border-radius:99px;font-size:10px;font-weight:700}
+.ob-g{background:#e8faf0;color:#16a34a}
+.ob-s{background:#fef9e7;color:#ca8a04}
+.ob-r{background:#fef2f2;color:#dc2626}
 
-/* GÜNLÜK HEDEF BANNER */
-.gunluk-hedef{margin:0 16px 16px;background:#f7f4ee;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
-.gh-lbl{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#ccc}
-.gh-val{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:#888}
-
-/* FOOTER */
-.foot{background:#111118;margin:0 0 0;padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
+.foot{background:#111118;padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
 .live-row{display:flex;align-items:center;gap:7px}
 .dot{width:6px;height:6px;background:#22c55e;border-radius:50%;animation:pu 2s infinite}
 @keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
@@ -176,10 +255,9 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 .ayar-btn:hover{border-color:#c9a84c;color:#c9a84c}
 .foot-brand{font-size:12px;font-weight:700;letter-spacing:2px;color:#c9a84c}
 
-/* MODAL */
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;justify-content:center;align-items:center}
 .overlay.open{display:flex}
-.modal{background:#fff;border-radius:20px;padding:24px;width:300px;max-width:90vw}
+.modal{background:#fff;border-radius:20px;padding:24px;width:300px;max-width:90vw;max-height:90vh;overflow-y:auto}
 .modal h2{font-size:16px;font-weight:700;margin-bottom:4px}
 .modal p{font-size:11px;color:#aaa;margin-bottom:16px}
 .modal label{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#bbb;display:block;margin-bottom:4px;margin-top:10px}
@@ -191,12 +269,12 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 .btn-kaydet{background:#c9a84c;color:#fff}
 .err{color:#dc2626;font-size:11px;margin-top:4px;display:none}
 .modal-divider{height:1px;background:#f0ece4;margin:14px 0 4px}
+.modal-sec{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:8px}
 </style>
 </head>
 <body>
 <div class="page">
 
-  <!-- TOP BAR -->
   <div class="topbar">
     <div class="topbar-title">Günlük Ciro Raporu</div>
     <div class="topbar-right">
@@ -205,20 +283,16 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
     </div>
   </div>
 
-  <!-- AYLIK BLOK -->
+  <!-- AYLIK -->
   <div class="aylik-blok">
-    <div class="aylik-header">
-      <div class="aylik-baslik">Aylık Ciro</div>
-    </div>
+    <div class="aylik-header"><div class="aylik-baslik">Aylık Ciro</div></div>
     <div class="aylik-row">
       <div class="aylik-val" id="aylik-ciro">—</div>
-      <div class="aylik-oran" id="aylik-oran">—</div>
+      <div class="aylik-oran" id="aylik-oran"></div>
     </div>
     <div class="aylik-hedef-txt" id="aylik-hedef-txt">Hedef: —</div>
     <div class="tup-wrap">
-      <div class="tup-track">
-        <div class="tup-fill" id="aylik-bar" style="width:0%;background:#c9a84c"></div>
-      </div>
+      <div class="tup-track"><div class="tup-fill" id="aylik-bar" style="width:0%"></div></div>
       <div class="tup-labels">
         <span class="tup-label">0</span>
         <span class="tup-label" id="aylik-hedef-lbl">—</span>
@@ -226,36 +300,46 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
     </div>
   </div>
 
-  <!-- BUGÜN BLOK -->
+  <!-- BUGÜN -->
   <div class="blok">
-    <div class="blok-header">
-      <div class="blok-baslik">Bugün Gerçekleşen Ciro</div>
-    </div>
-    <div class="bugun-row">
-      <div class="bugun-val" id="bugun-ciro">—</div>
-    </div>
+    <div class="blok-header"><div class="blok-baslik">Bugün Gerçekleşen Ciro</div></div>
+    <div class="bugun-row"><div class="bugun-val" id="bugun-ciro">—</div></div>
     <div class="bugun-adet" id="bugun-adet">—</div>
-
-    <!-- KATEGORİ TÜPLERİ -->
     <div class="kat-list" id="katlar"></div>
-
-    <!-- GÜNLÜK TOPLAM HEDEF -->
     <div class="gunluk-hedef">
       <div class="gh-lbl">Günlük Toplam Hedef</div>
       <div class="gh-val" id="gunluk-hedef">—</div>
     </div>
-
-    <!-- DÜN -->
     <div class="dun-row">
-      <div>
-        <div class="dun-lbl">Dün Ciro</div>
-        <div class="dun-val" id="dun-ciro">—</div>
-      </div>
+      <div><div class="dun-lbl">Dün Ciro</div><div class="dun-val" id="dun-ciro">—</div></div>
       <div class="fark" id="fark">—</div>
     </div>
   </div>
 
-  <!-- FOOTER -->
+  <!-- GEÇMİŞ -->
+  <div class="gecmis-blok">
+    <div class="gecmis-header">
+      <div class="gecmis-baslik">Günlük Geçmiş</div>
+    </div>
+    <div class="tablo-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tarih</th>
+            <th>E-Tic.</th>
+            <th>Mağaza</th>
+            <th>Toptan</th>
+            <th>Toplam</th>
+            <th>%</th>
+          </tr>
+        </thead>
+        <tbody id="gecmis-tbody">
+          <tr><td colspan="6" style="text-align:center;color:#ccc;padding:20px">Yükleniyor...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="foot">
     <div class="live-row">
       <div class="dot"></div>
@@ -285,17 +369,13 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
     </div>
     <div id="hedef-alan" style="display:none">
       <div class="modal-divider"></div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:8px">Günlük Hedefler</div>
-      <label>E-Ticaret (TL)</label>
-      <input type="number" id="h-et">
-      <label>Mağaza (TL)</label>
-      <input type="number" id="h-mg">
-      <label>Toptan (TL)</label>
-      <input type="number" id="h-tp">
+      <div class="modal-sec">Günlük Hedefler</div>
+      <label>E-Ticaret (TL)</label><input type="number" id="h-et">
+      <label>Mağaza (TL)</label><input type="number" id="h-mg">
+      <label>Toptan (TL)</label><input type="number" id="h-tp">
       <div class="modal-divider"></div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:8px">Aylık Hedef</div>
-      <label>Aylık Toplam (TL)</label>
-      <input type="number" id="h-aylik">
+      <div class="modal-sec">Aylık Hedef</div>
+      <label>Aylık Toplam (TL)</label><input type="number" id="h-aylik">
       <div class="btn-row">
         <button class="btn btn-iptal" onclick="modalKapat()">İptal</button>
         <button class="btn btn-kaydet" onclick="hedefKaydet()">💾 Kaydet</button>
@@ -307,16 +387,47 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 <script>
 let H={et:0,mg:0,tp:0,top:0,aylik:0};
 const AYLAR=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const AYLAR_K=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 const GUNLER=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
 function fmt(n){return Math.round(n).toLocaleString('tr-TR')}
+function fmtK(n){
+  if(n>=1000000) return (n/1000000).toFixed(1).replace('.',',')+' M';
+  if(n>=1000) return (n/1000).toFixed(0)+' B';
+  return fmt(n);
+}
 function renk(o){return o>=100?'#16a34a':o>=75?'#ca8a04':'#dc2626'}
 function renk2(o){return o>=100?'#22c55e':o>=75?'#facc15':'#ef4444'}
+function obClass(o){return o>=100?'ob-g':o>=75?'ob-s':'ob-r'}
+
+function gecmisGuncelle(){
+  fetch('/api/gecmis').then(r=>r.json()).then(rows=>{
+    if(!rows.length){
+      document.getElementById('gecmis-tbody').innerHTML=
+        '<tr><td colspan="6" style="text-align:center;color:#ccc;padding:20px">Henüz kayıt yok</td></tr>';
+      return;
+    }
+    document.getElementById('gecmis-tbody').innerHTML = rows.map(r=>{
+      const tarih = r.tarih; // YYYY-MM-DD
+      const parts = tarih.split('-');
+      const ay = AYLAR_K[parseInt(parts[1])-1];
+      const gun = parseInt(parts[2]);
+      const tarihStr = gun+' '+ay;
+      const oran = r.h_toplam>0 ? Math.round(r.toplam/r.h_toplam*100) : 0;
+      return `<tr>
+        <td>${tarihStr}</td>
+        <td>${fmtK(r.eticaret)}</td>
+        <td>${fmtK(r.magaza)}</td>
+        <td>${fmtK(r.toptan)}</td>
+        <td>${fmtK(r.toplam)}</td>
+        <td><span class="oran-badge ${obClass(oran)}">%${oran}</span></td>
+      </tr>`;
+    }).join('');
+  });
+}
 
 function guncelle(){
   fetch('/api/veri').then(r=>r.json()).then(d=>{
     H=d.hedefler;
-
-    // Tarih/saat TR
     const now=new Date();
     const tr=new Date(now.toLocaleString('en-US',{timeZone:'Europe/Istanbul'}));
     document.getElementById('tarih').textContent=
@@ -325,42 +436,38 @@ function guncelle(){
       String(tr.getHours()).padStart(2,'0')+':'+String(tr.getMinutes()).padStart(2,'0');
     document.getElementById('son-gun').textContent='Son: '+d.guncelleme;
 
-    // AYLIK
-    const ayOran = H.aylik>0 ? Math.round(d.aylik_ciro/H.aylik*100) : 0;
-    const ayRenk = renk2(ayOran);
-    document.getElementById('aylik-ciro').textContent = d.aylik_ciro>0 ? fmt(d.aylik_ciro)+' TL' : '—';
-    document.getElementById('aylik-oran').textContent = d.aylik_ciro>0 ? '%'+ayOran : '';
-    document.getElementById('aylik-oran').style.color = ayRenk;
-    document.getElementById('aylik-hedef-txt').textContent = 'Hedef: '+fmt(H.aylik)+' TL';
-    document.getElementById('aylik-hedef-lbl').textContent = fmt(H.aylik);
-    const ab = document.getElementById('aylik-bar');
-    ab.style.width = Math.min(ayOran,100)+'%';
-    ab.style.background = ayRenk;
+    // Aylık
+    const ayO=H.aylik>0?Math.round(d.aylik_ciro/H.aylik*100):0;
+    const ayR=renk2(ayO);
+    document.getElementById('aylik-ciro').textContent=d.aylik_ciro>0?fmt(d.aylik_ciro)+' TL':'—';
+    document.getElementById('aylik-oran').textContent=d.aylik_ciro>0?'%'+ayO:'';
+    document.getElementById('aylik-oran').style.color=ayR;
+    document.getElementById('aylik-hedef-txt').textContent='Hedef: '+fmt(H.aylik)+' TL';
+    document.getElementById('aylik-hedef-lbl').textContent=fmtK(H.aylik);
+    const ab=document.getElementById('aylik-bar');
+    ab.style.width=Math.min(ayO,100)+'%'; ab.style.background=ayR;
 
-    // BUGÜN
-    document.getElementById('bugun-ciro').textContent = fmt(d.bugun_ciro)+' TL';
-    document.getElementById('bugun-adet').textContent = fmt(d.toplam_adet)+' adet sipariş';
+    // Bugün
+    document.getElementById('bugun-ciro').textContent=fmt(d.bugun_ciro)+' TL';
+    document.getElementById('bugun-adet').textContent=fmt(d.toplam_adet)+' adet sipariş';
+    document.getElementById('gunluk-hedef').textContent=fmt(H.top)+' TL';
 
-    // Günlük toplam hedef
-    document.getElementById('gunluk-hedef').textContent = fmt(H.top)+' TL';
-
-    // DÜN
-    document.getElementById('dun-ciro').textContent = fmt(d.dun_ciro)+' TL';
+    // Dün
+    document.getElementById('dun-ciro').textContent=fmt(d.dun_ciro)+' TL';
     const f=d.bugun_ciro-d.dun_ciro;
     const fe=document.getElementById('fark');
     fe.textContent=(f>=0?'▲ ':'▼ ')+fmt(Math.abs(f))+' TL';
     fe.className='fark '+(f>=0?'fp':'fn');
 
-    // KATEGORİ TÜPLERİ
+    // Kategoriler
     const katlar=[
-      {n:'E-Ticaret', c:d.eticaret_ciro, h:H.et, r:'#3b5bdb'},
-      {n:'Mağaza',    c:d.magaza_ciro,   h:H.mg, r:'#2b8a3e'},
-      {n:'Toptan',    c:d.toptan_ciro,   h:H.tp, r:'#b45309'},
+      {n:'E-Ticaret',c:d.eticaret_ciro,h:H.et,r:'#3b5bdb'},
+      {n:'Mağaza',   c:d.magaza_ciro,  h:H.mg,r:'#2b8a3e'},
+      {n:'Toptan',   c:d.toptan_ciro,  h:H.tp,r:'#b45309'},
     ];
-    document.getElementById('katlar').innerHTML = katlar.map(k=>{
+    document.getElementById('katlar').innerHTML=katlar.map(k=>{
       const o=k.h>0?Math.round(k.c/k.h*100):0;
       const rc=renk(o);
-      const bw=Math.min(o,100);
       return `<div class="kat-item">
         <div class="kat-ust">
           <span class="kat-isim">${k.n}</span>
@@ -369,9 +476,7 @@ function guncelle(){
             <span class="kat-oran" style="color:${rc}">%${o}</span>
           </div>
         </div>
-        <div class="kat-track">
-          <div class="kat-fill" style="width:${bw}%;background:${k.r}"></div>
-        </div>
+        <div class="kat-track"><div class="kat-fill" style="width:${Math.min(o,100)}%;background:${k.r}"></div></div>
         <div class="kat-hedef-txt">Hedef: ${fmt(k.h)} TL</div>
       </div>`;
     }).join('');
@@ -387,7 +492,6 @@ function modalAc(){
   document.getElementById('sifre-err').style.display='none';
 }
 function modalKapat(){document.getElementById('overlay').classList.remove('open')}
-
 function sifreKontrol(){
   fetch('/api/sifre-kontrol',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({sifre:document.getElementById('sifre-inp').value})})
@@ -402,7 +506,6 @@ function sifreKontrol(){
     } else {document.getElementById('sifre-err').style.display='block';}
   });
 }
-
 function hedefKaydet(){
   fetch('/api/hedef-guncelle',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -411,12 +514,13 @@ function hedefKaydet(){
       mg:parseInt(document.getElementById('h-mg').value)||0,
       tp:parseInt(document.getElementById('h-tp').value)||0,
       aylik:parseInt(document.getElementById('h-aylik').value)||0
-    })})
-  .then(r=>r.json()).then(d=>{if(d.ok){modalKapat();guncelle();}});
+    })}).then(r=>r.json()).then(d=>{if(d.ok){modalKapat();guncelle();}});
 }
 
 guncelle();
-setInterval(guncelle,60000);
+gecmisGuncelle();
+setInterval(guncelle, 60000);
+setInterval(gecmisGuncelle, 300000);
 </script>
 </body>
 </html>"""
@@ -432,16 +536,23 @@ def index():
 
 @app.route("/api/veri")
 def api_veri():
-    return jsonify({
-        **son_veri,
+    return jsonify({**son_veri,
         "hedefler": {
-            "et"   : hedefler["eticaret"],
-            "mg"   : hedefler["magaza"],
-            "tp"   : hedefler["toptan"],
-            "top"  : hedefler["eticaret"] + hedefler["magaza"] + hedefler["toptan"],
+            "et": hedefler["eticaret"], "mg": hedefler["magaza"],
+            "tp": hedefler["toptan"],
+            "top": hedefler["eticaret"]+hedefler["magaza"]+hedefler["toptan"],
             "aylik": hedefler["aylik"],
         }
     })
+
+@app.route("/api/gecmis")
+def api_gecmis():
+    rows = db_gecmis(30)
+    return jsonify([{
+        "tarih": r[0], "eticaret": r[1], "magaza": r[2], "toptan": r[3],
+        "toplam": r[4], "adet": r[5],
+        "h_eticaret": r[6], "h_magaza": r[7], "h_toptan": r[8], "h_toplam": r[9]
+    } for r in rows])
 
 @app.route("/api/sifre-kontrol", methods=["POST"])
 def sifre_kontrol():
@@ -461,11 +572,48 @@ def hedef_guncelle():
     print(f"✅ Hedefler güncellendi")
     return jsonify({"ok": True})
 
+@app.route("/api/manuel-kayit", methods=["POST"])
+def manuel_kayit():
+    data = request.get_json()
+    if data.get("sifre") != ADMIN_SIFRE:
+        return jsonify({"ok": False, "hata": "Şifre hatalı"})
+    try:
+        tarih    = data["tarih"]   # "2026-03-01"
+        eticaret = float(data.get("eticaret", 0))
+        magaza   = float(data.get("magaza", 0))
+        toptan   = float(data.get("toptan", 0))
+        toplam   = eticaret + magaza + toptan
+        adet     = int(data.get("adet", 0))
+        h_et     = float(data.get("h_eticaret", hedefler["eticaret"]))
+        h_mg     = float(data.get("h_magaza",   hedefler["magaza"]))
+        h_tp     = float(data.get("h_toptan",   hedefler["toptan"]))
+        h_top    = h_et + h_mg + h_tp
+
+        with db_baglanti() as con:
+            con.execute("""
+                INSERT INTO gunluk (tarih,eticaret,magaza,toptan,toplam,adet,
+                                    h_eticaret,h_magaza,h_toptan,h_toplam,gece_kayit)
+                VALUES (?,?,?,?,?,?,?,?,?,?,1)
+                ON CONFLICT(tarih) DO UPDATE SET
+                    eticaret=excluded.eticaret, magaza=excluded.magaza,
+                    toptan=excluded.toptan, toplam=excluded.toplam,
+                    adet=excluded.adet, h_eticaret=excluded.h_eticaret,
+                    h_magaza=excluded.h_magaza, h_toptan=excluded.h_toptan,
+                    h_toplam=excluded.h_toplam, gece_kayit=1
+            """, (tarih, eticaret, magaza, toptan, toplam, adet, h_et, h_mg, h_tp, h_top))
+            con.commit()
+        print(f"✅ Manuel kayıt: {tarih} | ET={eticaret:,.0f} MG={magaza:,.0f} TP={toptan:,.0f}")
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "hata": str(e)})
+
+
 @app.route("/api/saglik")
 def saglik():
     return jsonify({"durum": "ok"})
 
 if __name__ == "__main__":
+    db_olustur()
     threading.Thread(target=guncelle_dongu, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
