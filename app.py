@@ -230,20 +230,26 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 
 /* GEÇMİŞ TABLO */
 .gecmis-blok{margin:12px 14px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
-.gecmis-header{padding:14px 16px;border-bottom:1px solid #f0ece4;display:flex;justify-content:space-between;align-items:center}
+.gecmis-header{padding:14px 16px;border-bottom:1px solid #f0ece4}
 .gecmis-baslik{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbb}
-.tablo-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:11px}
-thead tr{background:#f7f4ee}
-th{padding:8px 10px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#bbb;white-space:nowrap}
-th:first-child{text-align:left}
-td{padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:#555;border-top:1px solid #f5f2ec;white-space:nowrap}
-td:first-child{text-align:left;color:#888;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600}
-tr:hover td{background:#faf8f4}
-.oran-badge{display:inline-block;padding:2px 6px;border-radius:99px;font-size:10px;font-weight:700}
+
+/* GEÇMİŞ KARTLAR */
+.g-kart{border-bottom:1px solid #f5f2ec;padding:12px 16px}
+.g-kart:last-child{border-bottom:none}
+.g-ust{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.g-tarih{font-size:13px;font-weight:700;color:#333}
+.g-toplam-wrap{display:flex;align-items:baseline;gap:8px}
+.g-toplam{font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:#1a1a1a}
+.g-oran{font-family:'DM Mono',monospace;font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px}
 .ob-g{background:#e8faf0;color:#16a34a}
 .ob-s{background:#fef9e7;color:#ca8a04}
 .ob-r{background:#fef2f2;color:#dc2626}
+.g-katlar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.g-kat{background:#f7f4ee;border-radius:8px;padding:8px 10px}
+.g-kat-isim{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#bbb;margin-bottom:4px}
+.g-kat-gercek{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:#1a1a1a}
+.g-kat-hedef{font-family:'DM Mono',monospace;font-size:10px;color:#ccc;margin-top:1px}
+.g-kat-oran{font-size:10px;font-weight:700;margin-top:2px}
 
 .foot{background:#111118;padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
 .live-row{display:flex;align-items:center;gap:7px}
@@ -321,22 +327,8 @@ tr:hover td{background:#faf8f4}
     <div class="gecmis-header">
       <div class="gecmis-baslik">Günlük Geçmiş</div>
     </div>
-    <div class="tablo-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Tarih</th>
-            <th>E-Tic.</th>
-            <th>Mağaza</th>
-            <th>Toptan</th>
-            <th>Toplam</th>
-            <th>%</th>
-          </tr>
-        </thead>
-        <tbody id="gecmis-tbody">
-          <tr><td colspan="6" style="text-align:center;color:#ccc;padding:20px">Yükleniyor...</td></tr>
-        </tbody>
-      </table>
+    <div id="gecmis-liste">
+      <div style="text-align:center;color:#ccc;padding:24px;font-size:12px">Yükleniyor...</div>
     </div>
   </div>
 
@@ -401,26 +393,46 @@ function obClass(o){return o>=100?'ob-g':o>=75?'ob-s':'ob-r'}
 
 function gecmisGuncelle(){
   fetch('/api/gecmis').then(r=>r.json()).then(rows=>{
+    const el = document.getElementById('gecmis-liste');
     if(!rows.length){
-      document.getElementById('gecmis-tbody').innerHTML=
-        '<tr><td colspan="6" style="text-align:center;color:#ccc;padding:20px">Henüz kayıt yok</td></tr>';
+      el.innerHTML='<div style="text-align:center;color:#ccc;padding:24px;font-size:12px">Henüz kayıt yok</div>';
       return;
     }
-    document.getElementById('gecmis-tbody').innerHTML = rows.map(r=>{
-      const tarih = r.tarih; // YYYY-MM-DD
-      const parts = tarih.split('-');
+    el.innerHTML = rows.map(r=>{
+      const parts = r.tarih.split('-');
       const ay = AYLAR_K[parseInt(parts[1])-1];
       const gun = parseInt(parts[2]);
-      const tarihStr = gun+' '+ay;
+      const tarihStr = gun+' '+ay+' '+parts[0];
       const oran = r.h_toplam>0 ? Math.round(r.toplam/r.h_toplam*100) : 0;
-      return `<tr>
-        <td>${tarihStr}</td>
-        <td>${fmtK(r.eticaret)}</td>
-        <td>${fmtK(r.magaza)}</td>
-        <td>${fmtK(r.toptan)}</td>
-        <td>${fmtK(r.toplam)}</td>
-        <td><span class="oran-badge ${obClass(oran)}">%${oran}</span></td>
-      </tr>`;
+      const obc = oran>=100?'ob-g':oran>=75?'ob-s':'ob-r';
+
+      const katlar = [
+        {n:'E-Tic', g:r.eticaret, h:r.h_eticaret, r:'#3b5bdb'},
+        {n:'Mağaza', g:r.magaza,  h:r.h_magaza,   r:'#2b8a3e'},
+        {n:'Toptan', g:r.toptan,  h:r.h_toptan,   r:'#b45309'},
+      ];
+
+      return `<div class="g-kart">
+        <div class="g-ust">
+          <div class="g-tarih">${tarihStr}</div>
+          <div class="g-toplam-wrap">
+            <div class="g-toplam">${fmtK(r.toplam)} TL</div>
+            <span class="g-oran ${obc}">%${oran}</span>
+          </div>
+        </div>
+        <div class="g-katlar">
+          ${katlar.map(k=>{
+            const ko = k.h>0?Math.round(k.g/k.h*100):0;
+            const kc = ko>=100?'#16a34a':ko>=75?'#ca8a04':'#dc2626';
+            return `<div class="g-kat">
+              <div class="g-kat-isim">${k.n}</div>
+              <div class="g-kat-gercek" style="color:${k.r}">${fmtK(k.g)}</div>
+              <div class="g-kat-hedef">H: ${fmtK(k.h)}</div>
+              <div class="g-kat-oran" style="color:${kc}">%${ko}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
     }).join('');
   });
 }
