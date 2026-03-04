@@ -58,22 +58,41 @@ def db_olustur():
 def db_kaydet(tarih, v, gece=False):
     htop = hedefler["eticaret"] + hedefler["magaza"] + hedefler["toptan"]
     with db_baglanti() as con:
-        con.execute("""
-            INSERT INTO gunluk (tarih,eticaret,magaza,toptan,toplam,adet,
-                                h_eticaret,h_magaza,h_toptan,h_toplam,gece_kayit)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(tarih) DO UPDATE SET
-                eticaret=excluded.eticaret, magaza=excluded.magaza,
-                toptan=excluded.toptan, toplam=excluded.toplam,
-                adet=excluded.adet, h_eticaret=excluded.h_eticaret,
-                h_magaza=excluded.h_magaza, h_toptan=excluded.h_toptan,
-                h_toplam=excluded.h_toplam,
-                gece_kayit=CASE WHEN excluded.gece_kayit=1 THEN 1 ELSE gunluk.gece_kayit END
-        """, (tarih,
-              v["eticaret_ciro"], v["magaza_ciro"], v["toptan_ciro"], v["bugun_ciro"],
-              v["toplam_adet"],
-              hedefler["eticaret"], hedefler["magaza"], hedefler["toptan"], htop,
-              1 if gece else 0))
+        # Gece kaydı yapılmış mı kontrol et
+        row = con.execute("SELECT gece_kayit FROM gunluk WHERE tarih=?", (tarih,)).fetchone()
+        zaten_gece = row and row[0] == 1
+
+        if zaten_gece and not gece:
+            # Sadece ciro rakamlarını güncelle, hedeflere dokunma
+            con.execute("""
+                INSERT INTO gunluk (tarih,eticaret,magaza,toptan,toplam,adet,
+                                    h_eticaret,h_magaza,h_toptan,h_toplam,gece_kayit)
+                VALUES (?,?,?,?,?,?,?,?,?,?,0)
+                ON CONFLICT(tarih) DO UPDATE SET
+                    eticaret=excluded.eticaret, magaza=excluded.magaza,
+                    toptan=excluded.toptan, toplam=excluded.toplam,
+                    adet=excluded.adet
+            """, (tarih,
+                  v["eticaret_ciro"], v["magaza_ciro"], v["toptan_ciro"], v["bugun_ciro"],
+                  v["toplam_adet"],
+                  hedefler["eticaret"], hedefler["magaza"], hedefler["toptan"], htop))
+        else:
+            con.execute("""
+                INSERT INTO gunluk (tarih,eticaret,magaza,toptan,toplam,adet,
+                                    h_eticaret,h_magaza,h_toptan,h_toplam,gece_kayit)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(tarih) DO UPDATE SET
+                    eticaret=excluded.eticaret, magaza=excluded.magaza,
+                    toptan=excluded.toptan, toplam=excluded.toplam,
+                    adet=excluded.adet, h_eticaret=excluded.h_eticaret,
+                    h_magaza=excluded.h_magaza, h_toptan=excluded.h_toptan,
+                    h_toplam=excluded.h_toplam,
+                    gece_kayit=CASE WHEN excluded.gece_kayit=1 THEN 1 ELSE gunluk.gece_kayit END
+            """, (tarih,
+                  v["eticaret_ciro"], v["magaza_ciro"], v["toptan_ciro"], v["bugun_ciro"],
+                  v["toplam_adet"],
+                  hedefler["eticaret"], hedefler["magaza"], hedefler["toptan"], htop,
+                  1 if gece else 0))
         con.commit()
 
 def db_gecmis(limit=30):
@@ -96,16 +115,16 @@ def parse_sayi(m):
 def veri_cek():
     s = requests.Session()
     s.headers.update({"User-Agent": "Mozilla/5.0 Chrome/120"})
-    r = s.get("https://rapor.imannoor.com/Account/Login/", timeout=15)
+    r = s.get("https://rapor.imannoor.com/Account/Login/", timeout=30)
     soup = BeautifulSoup(r.text, "html.parser")
     tok = soup.find("input", {"name": "__RequestVerificationToken"})
     r2 = s.post("https://rapor.imannoor.com/Account/Login/",
                 data={"UserName": KULLANICI_ADI, "Password": SIFRE,
                       "__RequestVerificationToken": tok["value"] if tok else ""},
-                timeout=15, allow_redirects=True)
+                timeout=30, allow_redirects=True)
     if "login" in r2.url.lower():
         raise Exception("Giriş başarısız")
-    r3 = s.get("https://rapor.imannoor.com/Report/OrderReport", timeout=15)
+    r3 = s.get("https://rapor.imannoor.com/Report/OrderReport", timeout=30)
     txt = BeautifulSoup(r3.text, "html.parser").get_text("\n")
 
     def p(etiket):
@@ -162,6 +181,8 @@ def guncelle_dongu():
         except Exception as e:
             son_veri["hata"] = str(e)
             print(f"  ❌ {e}")
+            time.sleep(60)  # hata varsa 1 dk sonra tekrar dene
+            continue
         time.sleep(300)
 
 
