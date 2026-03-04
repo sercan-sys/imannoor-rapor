@@ -149,10 +149,24 @@ def tr_simdi():
     from zoneinfo import ZoneInfo
     return datetime.now(ZoneInfo("Europe/Istanbul"))
 
-def guncelle_dongu():
+def gece_kayit_dongu():
+    """Veri çekiminden bağımsız, sadece gece kaydı yapar"""
+    from zoneinfo import ZoneInfo
+    son_gece_kayit = None
+    while True:
+        try:
+            d = datetime.now(ZoneInfo("Europe/Istanbul"))
+            tarih_str = f"{d.year}-{d.month:02d}-{d.day:02d}"
+            if d.hour == 23 and d.minute >= 58:
+                if son_gece_kayit != tarih_str and son_veri["bugun_ciro"] > 0:
+                    db_kaydet(tarih_str, son_veri, gece=True)
+                    son_gece_kayit = tarih_str
+                    print(f"🌙 Gece kaydı: {tarih_str} | {son_veri['bugun_ciro']:,.0f} TL")
+        except Exception as e:
+            print(f"❌ Gece kayıt hatası: {e}")
+        time.sleep(30)  # her 30 saniyede kontrol et
     global son_veri
     db_olustur()
-    son_gece_kayit = None
 
     while True:
         try:
@@ -162,26 +176,15 @@ def guncelle_dongu():
                      "Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"]
             d = tr_simdi()
             tarih_str = f"{d.year}-{d.month:02d}-{d.day:02d}"
-
             son_veri = {**v,
                 "guncelleme": f"{d.day} {AYLAR[d.month-1]} {d.year}  {d.strftime('%H:%M')}",
                 "hata": None}
-
-            # Her 5dk: bugünü güncelle
             db_kaydet(tarih_str, v, gece=False)
-
-            # Gece 23:58 → kalıcı gece kaydı
-            if d.hour == 23 and d.minute >= 58:
-                if son_gece_kayit != tarih_str:
-                    db_kaydet(tarih_str, v, gece=True)
-                    son_gece_kayit = tarih_str
-                    print(f"  🌙 Gece kaydı yapıldı: {tarih_str}")
-
             print(f"  ✅ {v['bugun_ciro']:,.0f} TL | {v['toplam_adet']} adet")
         except Exception as e:
             son_veri["hata"] = str(e)
             print(f"  ❌ {e}")
-            time.sleep(60)  # hata varsa 1 dk sonra tekrar dene
+            time.sleep(60)
             continue
         time.sleep(300)
 
@@ -605,6 +608,22 @@ def hedef_guncelle():
     print(f"✅ Hedefler güncellendi")
     return jsonify({"ok": True})
 
+@app.route("/api/gece-kayit", methods=["POST"])
+def api_gece_kayit():
+    data = request.get_json()
+    if data.get("sifre") != ADMIN_SIFRE:
+        return jsonify({"ok": False, "hata": "Şifre hatalı"})
+    try:
+        from zoneinfo import ZoneInfo
+        d = datetime.now(ZoneInfo("Europe/Istanbul"))
+        tarih_str = f"{d.year}-{d.month:02d}-{d.day:02d}"
+        db_kaydet(tarih_str, son_veri, gece=True)
+        print(f"🌙 PC'den gece kaydı: {tarih_str} | {son_veri['bugun_ciro']:,.0f} TL")
+        return jsonify({"ok": True, "tarih": tarih_str, "toplam": son_veri["bugun_ciro"]})
+    except Exception as e:
+        return jsonify({"ok": False, "hata": str(e)})
+
+
 @app.route("/api/manuel-kayit", methods=["POST"])
 def manuel_kayit():
     data = request.get_json()
@@ -648,5 +667,6 @@ def saglik():
 if __name__ == "__main__":
     db_olustur()
     threading.Thread(target=guncelle_dongu, daemon=True).start()
+    threading.Thread(target=gece_kayit_dongu, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
