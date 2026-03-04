@@ -182,8 +182,15 @@ def guncelle_dongu():
             son_veri = {**v,
                 "guncelleme": f"{d.day} {AYLAR[d.month-1]} {d.year}  {d.strftime('%H:%M')}",
                 "hata": None}
-            db_kaydet(tarih_str, v, gece=False)
-            print(f"  ✅ {v['bugun_ciro']:,.0f} TL | {v['toplam_adet']} adet")
+
+            # Gece 23:00'den sonra gelen her başarılı veri → otomatik kilitle
+            gece = d.hour >= 23
+            db_kaydet(tarih_str, v, gece=gece)
+
+            if gece:
+                print(f"  🌙 Gece kaydı kilitlendi: {tarih_str} | {v['bugun_ciro']:,.0f} TL")
+            else:
+                print(f"  ✅ {v['bugun_ciro']:,.0f} TL | {v['toplam_adet']} adet")
         except Exception as e:
             son_veri["hata"] = str(e)
             print(f"  ❌ {e}")
