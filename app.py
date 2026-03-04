@@ -165,6 +165,9 @@ def gece_kayit_dongu():
         except Exception as e:
             print(f"❌ Gece kayıt hatası: {e}")
         time.sleep(30)  # her 30 saniyede kontrol et
+
+
+def guncelle_dongu():
     global son_veri
     db_olustur()
 
