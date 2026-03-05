@@ -27,6 +27,8 @@ son_veri = {
     "bugun_ciro": 0, "dun_ciro": 0, "toplam_adet": 0,
     "eticaret_ciro": 0, "magaza_ciro": 0, "toptan_ciro": 0,
     "aylik_ciro": 0,
+    "yillik_et": 0, "yillik_mg": 0, "yillik_tp": 0,
+    "aylik_et":  0, "aylik_mg":  0, "aylik_tp":  0,
     "guncelleme": "Henüz güncellenmedi", "hata": None,
 }
 
@@ -124,6 +126,8 @@ def veri_cek():
                 timeout=30, allow_redirects=True)
     if "login" in r2.url.lower():
         raise Exception("Giriş başarısız")
+
+    # OrderReport sayfası
     r3 = s.get("https://rapor.imannoor.com/Report/OrderReport", timeout=30)
     txt = BeautifulSoup(r3.text, "html.parser").get_text("\n")
 
@@ -136,6 +140,45 @@ def veri_cek():
                     if v: return parse_sayi(v)
         return 0.0
 
+    # Charts sayfası — kar-zarar çarpanları
+    carpanlar = {
+        "yillik_et": 0.0, "yillik_mg": 0.0, "yillik_tp": 0.0,
+        "aylik_et":  0.0, "aylik_mg":  0.0, "aylik_tp":  0.0,
+    }
+    try:
+        r4 = s.get("https://rapor.imannoor.com/Report/Charts", timeout=30)
+        lines = [l.strip() for l in BeautifulSoup(r4.text, "html.parser").get_text("\n").split("\n") if l.strip()]
+
+        def kanal_carpan(lines, baslangic, kanal_adi):
+            """Kanal adından sonra 4. değer çarpan"""
+            for i, l in enumerate(lines):
+                if i >= baslangic and kanal_adi.lower() in l.lower():
+                    # Sıra: İsim, Maliyet, Ciro, KZ-TL, KZ-Çarpan
+                    sayilar = []
+                    for j in range(i+1, min(i+6, len(lines))):
+                        try:
+                            v = parse_sayi(lines[j])
+                            if v > 0: sayilar.append(v)
+                        except: pass
+                    if len(sayilar) >= 4:
+                        return sayilar[3]  # 4. sayı = çarpan
+            return 0.0
+
+        # Yıllık bölüm: "Yıllık Satış Kanalı Raporu" satırından sonra
+        yillik_baslangic = next((i for i, l in enumerate(lines) if "yıllık satış kanalı" in l.lower()), 0)
+        aylik_baslangic  = next((i for i, l in enumerate(lines) if "aylık satış kanalı"  in l.lower()), 0)
+
+        carpanlar["yillik_et"] = kanal_carpan(lines, yillik_baslangic, "E-Ticaret")
+        carpanlar["yillik_mg"] = kanal_carpan(lines, yillik_baslangic, "Mağaza")
+        carpanlar["yillik_tp"] = kanal_carpan(lines, yillik_baslangic, "Toptan")
+        carpanlar["aylik_et"]  = kanal_carpan(lines, aylik_baslangic,  "E-Ticaret")
+        carpanlar["aylik_mg"]  = kanal_carpan(lines, aylik_baslangic,  "Mağaza")
+        carpanlar["aylik_tp"]  = kanal_carpan(lines, aylik_baslangic,  "Toptan")
+        print(f"  📊 Çarpanlar: Yıllık ET={carpanlar['yillik_et']} MG={carpanlar['yillik_mg']} TP={carpanlar['yillik_tp']}")
+        print(f"               Aylık  ET={carpanlar['aylik_et']}  MG={carpanlar['aylik_mg']}  TP={carpanlar['aylik_tp']}")
+    except Exception as e:
+        print(f"  ⚠️ Charts çekilemedi: {e}")
+
     return {
         "bugun_ciro": p("Bugün Ciro"), "dun_ciro": p("Dün Ciro"),
         "toplam_adet": int(p("Adet")),
@@ -143,6 +186,7 @@ def veri_cek():
         "magaza_ciro": p("Mağaza Ciro"),
         "toptan_ciro": p("Toptan Ciro"),
         "aylik_ciro": p("Bu Ay Ciro") or p("Aylık Ciro") or p("Bu Ay") or p("Aylık"),
+        **carpanlar,
     }
 
 def tr_simdi():
@@ -249,7 +293,11 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
 .kat-oran{font-family:'DM Mono',monospace;font-size:12px;font-weight:700}
 .kat-track{width:100%;height:8px;background:#f0ece4;border-radius:99px;overflow:hidden}
 .kat-fill{height:100%;border-radius:99px;transition:width 1s ease}
-.kat-hedef-txt{font-size:10px;color:#ccc;margin-top:3px;font-family:'DM Mono',monospace}
+.kat-alt-row{display:flex;justify-content:space-between;align-items:center;margin-top:3px}
+.carpan-wrap{display:flex;align-items:center;gap:5px}
+.carpan-lbl{font-size:10px;color:#bbb;font-weight:600}
+.carpan-aylik{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;background:#e0f0ff;color:#1971c2}
+.carpan-yillik{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;background:#fff3e0;color:#e67700}
 
 .gunluk-hedef{margin:0 16px 12px;background:#f7f4ee;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
 .gh-lbl{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#ccc}
@@ -507,13 +555,18 @@ function guncelle(){
 
     // Kategoriler
     const katlar=[
-      {n:'E-Ticaret',c:d.eticaret_ciro,h:H.et,r:'#3b5bdb'},
-      {n:'Mağaza',   c:d.magaza_ciro,  h:H.mg,r:'#2b8a3e'},
-      {n:'Toptan',   c:d.toptan_ciro,  h:H.tp,r:'#b45309'},
+      {n:'E-Ticaret', c:d.eticaret_ciro, h:H.et, r:'#3b5bdb', yc:d.yillik_et, ac:d.aylik_et},
+      {n:'Mağaza',    c:d.magaza_ciro,   h:H.mg, r:'#2b8a3e', yc:d.yillik_mg, ac:d.aylik_mg},
+      {n:'Toptan',    c:d.toptan_ciro,   h:H.tp, r:'#b45309', yc:d.yillik_tp, ac:d.aylik_tp},
     ];
     document.getElementById('katlar').innerHTML=katlar.map(k=>{
       const o=k.h>0?Math.round(k.c/k.h*100):0;
       const rc=renk(o);
+      const carpanStr = (k.ac>0 || k.yc>0)
+        ? `<span class="carpan-lbl">Çarpan:</span> `
+          + (k.ac>0 ? `<span class="carpan-aylik">Aylık ${k.ac.toFixed(2).replace('.',',')}x</span>` : '')
+          + (k.yc>0 ? `<span class="carpan-yillik">Yıllık ${k.yc.toFixed(2).replace('.',',')}x</span>` : '')
+        : '';
       return `<div class="kat-item">
         <div class="kat-ust">
           <span class="kat-isim">${k.n}</span>
@@ -523,7 +576,10 @@ function guncelle(){
           </div>
         </div>
         <div class="kat-track"><div class="kat-fill" style="width:${Math.min(o,100)}%;background:${k.r}"></div></div>
-        <div class="kat-hedef-txt">Hedef: ${fmt(k.h)} TL</div>
+        <div class="kat-alt-row">
+          <div class="kat-hedef-txt">Hedef: ${fmt(k.h)} TL</div>
+          <div class="carpan-wrap">${carpanStr}</div>
+        </div>
       </div>`;
     }).join('');
 
@@ -668,6 +724,27 @@ def manuel_kayit():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "hata": str(e)})
+
+
+@app.route("/api/debug-charts")
+def debug_charts():
+    try:
+        s = requests.Session()
+        s.headers.update({"User-Agent": "Mozilla/5.0 Chrome/120"})
+        r = s.get("https://rapor.imannoor.com/Account/Login/", timeout=30)
+        soup = BeautifulSoup(r.text, "html.parser")
+        tok = soup.find("input", {"name": "__RequestVerificationToken"})
+        s.post("https://rapor.imannoor.com/Account/Login/",
+               data={"UserName": KULLANICI_ADI, "Password": SIFRE,
+                     "__RequestVerificationToken": tok["value"] if tok else ""},
+               timeout=30, allow_redirects=True)
+        r2 = s.get("https://rapor.imannoor.com/Report/Charts", timeout=30)
+        soup2 = BeautifulSoup(r2.text, "html.parser")
+        txt = soup2.get_text("\n")
+        lines = [l.strip() for l in txt.split("\n") if l.strip()]
+        return jsonify({"lines": lines[:200], "html_snippet": r2.text[:3000]})
+    except Exception as e:
+        return jsonify({"hata": str(e)})
 
 
 @app.route("/api/saglik")
