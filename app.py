@@ -251,6 +251,7 @@ HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Imannoor Ciro</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;900&family=DM+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-height:100vh}
@@ -414,6 +415,16 @@ body{font-family:'DM Sans',sans-serif;background:#f0ede6;color:#1a1a1a;min-heigh
     </div>
   </div>
 
+  <!-- GRAFİK -->
+  <div class="gecmis-blok" style="margin-top:12px">
+    <div class="gecmis-header">
+      <div class="gecmis-baslik">Günlük Ciro Grafiği</div>
+    </div>
+    <div style="padding:16px">
+      <canvas id="ciro-grafik" height="220"></canvas>
+    </div>
+  </div>
+
   <div class="foot">
     <div class="live-row">
       <div class="dot"></div>
@@ -516,6 +527,22 @@ function gecmisGuncelle(){
         </div>
       </div>`;
     }).join('');
+
+    // GRAFİK
+    const siralı = [...rows].reverse(); // eskiden yeniye
+    const labels = siralı.map(r => {
+      const p = r.tarih.split('-');
+      return parseInt(p[2])+' '+AYLAR_K[parseInt(p[1])-1];
+    });
+    const M = 1000000;
+    grafıkGuncelle(
+      labels,
+      siralı.map(r=>r.eticaret/M),
+      siralı.map(r=>r.magaza/M),
+      siralı.map(r=>r.toptan/M),
+      siralı.map(r=>r.toplam/M),
+      siralı.map(r=>r.h_toplam/M)
+    );
   });
 }
 
@@ -617,6 +644,38 @@ function hedefKaydet(){
       tp:parseInt(document.getElementById('h-tp').value)||0,
       aylik:parseInt(document.getElementById('h-aylik').value)||0
     })}).then(r=>r.json()).then(d=>{if(d.ok){modalKapat();guncelle();}});
+}
+
+let ciroGrafik = null;
+function grafıkGuncelle(labels, et, mg, tp, toplam, hedef){
+  const ctx = document.getElementById('ciro-grafik').getContext('2d');
+  if(ciroGrafik) ciroGrafik.destroy();
+  ciroGrafik = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {type:'bar', label:'E-Ticaret', data:et, backgroundColor:'rgba(59,91,219,0.7)', stack:'stack', order:2},
+        {type:'bar', label:'Mağaza',    data:mg, backgroundColor:'rgba(43,138,62,0.7)',  stack:'stack', order:2},
+        {type:'bar', label:'Toptan',    data:tp, backgroundColor:'rgba(180,83,9,0.7)',   stack:'stack', order:2},
+        {type:'line', label:'Toplam', data:toplam, borderColor:'#1a1a1a', backgroundColor:'transparent',
+         borderWidth:2, pointRadius:3, pointBackgroundColor:'#1a1a1a', tension:0.3, order:1},
+        {type:'line', label:'Hedef', data:hedef, borderColor:'#c9a84c', backgroundColor:'transparent',
+         borderWidth:2, borderDash:[5,4], pointRadius:0, tension:0, order:1},
+      ]
+    },
+    options: {
+      responsive:true,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{position:'bottom', labels:{font:{size:10,family:'DM Sans'}, boxWidth:12, padding:10}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toFixed(2).replace('.',',')+' M TL'}}
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:10}}},
+        y:{grid:{color:'#f0ece4'}, ticks:{font:{size:10}, callback:v=>v.toFixed(1)+' M'}}
+      }
+    }
+  });
 }
 
 guncelle();
